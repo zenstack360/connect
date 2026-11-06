@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export async function GET(req: NextRequest) {
   const mode = req.nextUrl.searchParams.get('hub.mode'); const token = req.nextUrl.searchParams.get('hub.verify_token'); const challenge = req.nextUrl.searchParams.get('hub.challenge');
   if (mode !== 'subscribe' || !token || !challenge) return new NextResponse('Forbidden', { status: 403 });
-  try { const db = await getDb(); const channels = await db.collection('channels').find({ type: 'whatsapp', 'credentials.verifyTokenEncrypted': { $exists: true } }).toArray(); for (const ch of channels) if (decryptSecret((ch.credentials as any).verifyTokenEncrypted) === token) return new NextResponse(challenge, { status: 200 }); } catch {}
+  try { const configured = process.env.META_VERIFY_TOKEN; if (configured && token === configured) return new NextResponse(challenge, { status: 200 }); const db = await getDb(); const channels = await db.collection('channels').find({ type: 'whatsapp', 'credentials.verifyTokenEncrypted': { $exists: true } }).toArray(); for (const ch of channels) if (decryptSecret((ch.credentials as any).verifyTokenEncrypted) === token) return new NextResponse(challenge, { status: 200 }); } catch {}
   return new NextResponse('Forbidden', { status: 403 });
 }
 export async function POST(req: NextRequest) {

@@ -93,7 +93,7 @@ Create a MongoDB Atlas Vector Search index named `ai_knowledge_vector` on `aiKno
 The runtime has a tenant and agent scoped lexical fallback if that index is not available. For safe production retrieval, configure the Atlas index. Monthly token/cost usage is recorded per tenant and agent; cost estimates are approximate. Handoffs are recorded in `aiHandoffs` and conversation takeover state is stored on the conversation.
 
 ## Current MVP boundary
-The project is a runnable functional foundation, not a completed production omnichannel platform. Inbox records and messages persist in MongoDB. WhatsApp Cloud API and Meta Messenger/Instagram OAuth and messaging paths are implemented. Gmail and Outlook mailbox connections, inbox synchronization, email threading, attachments, queued sending, and Outlook notifications are implemented; provider app review, consent, deployment callbacks and recurring sync jobs still need configuration. Gmail synchronization uses history polling; Gmail Pub/Sub push is not configured by this app.
+The project is a runnable functional foundation, not a completed production omnichannel platform. Inbox records and messages persist in MongoDB. WhatsApp Cloud API, WhatsApp Embedded Signup entry point, and Meta Messenger/Instagram OAuth and messaging paths are implemented. Gmail and Outlook mailbox connections, inbox synchronization, email threading, attachments, queued sending, and Outlook notifications are implemented; provider app review, consent, deployment callbacks and recurring sync jobs still need configuration. Gmail synchronization uses history polling; Gmail Pub/Sub push is not configured by this app.
 
 ### Billing, campaigns and analytics status
 
