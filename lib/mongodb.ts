@@ -4,16 +4,18 @@ const uri = process.env.MONGODB_URI;
 
 type MongoGlobal = typeof globalThis & { _mongoClientPromise?: Promise<MongoClient> };
 const globalForMongo = globalThis as MongoGlobal;
-const options = { maxPoolSize: 10, minPoolSize: 0, maxIdleTimeMS: 10000, serverSelectionTimeoutMS: 10000 };
+const options = { maxPoolSize: 20, minPoolSize: 0, maxIdleTimeMS: 60000, serverSelectionTimeoutMS: 10000 };
 function getClientPromise() {
   if (!uri) throw new Error('Missing MONGODB_URI environment variable');
-  return globalForMongo._mongoClientPromise ?? new MongoClient(uri, options).connect();
+  // Keep one client per server process. Reconnecting for each request adds
+  // handshake latency and can exhaust MongoDB connection limits under load.
+  globalForMongo._mongoClientPromise ??= new MongoClient(uri, options).connect();
+  return globalForMongo._mongoClientPromise;
 }
 
 
 export async function getDb(): Promise<Db> {
   const client = await getClientPromise();
-  if (process.env.NODE_ENV !== 'production') globalForMongo._mongoClientPromise = Promise.resolve(client);
   return client.db(process.env.MONGODB_DB_NAME || 'zenstack360_connect');
 }
 
@@ -26,6 +28,7 @@ export async function ensureIndexes() {
     db.collection('contacts').createIndex({ tenantId: 1, email: 1 }),
     db.collection('conversations').createIndex({ tenantId: 1, updatedAt: -1 }),
     db.collection('messages').createIndex({ tenantId: 1, conversationId: 1, createdAt: 1 }),
+    db.collection('messages').createIndex({ tenantId: 1, conversationId: 1, createdAt: -1 }),
     db.collection('channels').createIndex({ tenantId: 1, type: 1 }),
     db.collection('webhookEvents').createIndex({ tenantId: 1, channel: 1, eventId: 1 }, { unique: true, sparse: true }),
     db.collection('messages').createIndex({ tenantId: 1, idempotencyKey: 1 }, { unique: true, sparse: true }),
