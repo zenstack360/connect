@@ -20,11 +20,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const actual = Buffer.from(row.sig || '', 'hex');
     if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return NextResponse.json({ error: 'OAuth state signature invalid' }, { status: 400 });
     const origin = appOrigin(req);
+    const fail = async (message: string, status = 400) => {
+      await db.collection('metaOAuthStates').updateOne({ _id: row._id }, { $set: { lastError: message, updatedAt: new Date() } });
+      return NextResponse.redirect(`${origin}/channels?meta=error&reason=${encodeURIComponent(message)}`, { status: 303 });
+    };
     if (providerError || !code) {
       await db.collection('metaOAuthStates').deleteOne({ _id: row._id });
       return NextResponse.redirect(`${origin}/channels?meta=error`);
     }
-    if (!process.env.META_APP_ID || !process.env.META_APP_SECRET) return NextResponse.json({ error: 'Meta OAuth is not configured' }, { status: 503 });
+    if (!process.env.META_APP_ID || !process.env.META_APP_SECRET) return fail('Meta authorization is not configured for this app yet.', 503);
     const redirect = `${origin}/api/channels/${params.id}/meta/oauth/callback`;
     const exchangeUrl = new URL(`${graph()}/oauth/access_token`);
     exchangeUrl.searchParams.set('client_id', process.env.META_APP_ID);
@@ -33,22 +37,22 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     exchangeUrl.searchParams.set('code', code);
     const exchangeRes = await fetch(exchangeUrl);
     const exchanged: any = await exchangeRes.json().catch(() => ({}));
-    if (!exchangeRes.ok || !exchanged.access_token) return NextResponse.json({ error: exchanged?.error?.message || 'Meta token exchange failed' }, { status: 502 });
+    if (!exchangeRes.ok || !exchanged.access_token) return fail(exchanged?.error?.message || 'Meta token exchange failed. Please reconnect.', 502);
 
     let accounts: any[] = [];
     if (row.type === 'whatsapp') {
       // Embedded Signup returns WABA and phone number IDs in the signed OAuth state.
       const wabaId = String(row.wabaId || '');
       const phoneNumberId = String(row.phoneNumberId || '');
-      if (!wabaId || !phoneNumberId) return NextResponse.json({ error: 'WhatsApp signup did not return a business account and phone number. Check the Embedded Signup configuration and try again.' }, { status: 422 });
+      if (!wabaId || !phoneNumberId) return fail('Meta did not return a WhatsApp business account and phone number. Check the Embedded Signup setup and try again.', 422);
       const accountUrl = new URL(`${graph()}/${encodeURIComponent(wabaId)}/phone_numbers`);
       accountUrl.searchParams.set('fields', 'id,display_phone_number,verified_name');
       accountUrl.searchParams.set('access_token', exchanged.access_token);
       const accountRes = await fetch(accountUrl);
       const accountData: any = await accountRes.json().catch(() => ({}));
-      if (!accountRes.ok) return NextResponse.json({ error: accountData?.error?.message || 'Could not verify WhatsApp business assets' }, { status: 502 });
+      if (!accountRes.ok) return fail(accountData?.error?.message || 'Could not verify WhatsApp business assets. Please reconnect.', 502);
       const phone = (accountData.data || []).find((x: any) => String(x.id) === phoneNumberId);
-      if (!phone) return NextResponse.json({ error: 'The selected phone number is not available in the authorized WhatsApp Business Account' }, { status: 422 });
+      if (!phone) return fail('The selected phone number is not available in the authorized WhatsApp Business Account.', 422);
       accounts = [{ id: wabaId, name: phone.verified_name || phone.display_phone_number || 'WhatsApp Business', pageId: '', phoneNumberId, whatsappBusinessAccountId: wabaId, token: exchanged.access_token, displayPhoneNumber: phone.display_phone_number }];
     } else {
       const pagesUrl = new URL(`${graph()}/me/accounts`);
@@ -56,7 +60,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       pagesUrl.searchParams.set('access_token', exchanged.access_token);
       const pagesRes = await fetch(pagesUrl);
       const pages: any = await pagesRes.json().catch(() => ({}));
-      if (!pagesRes.ok) return NextResponse.json({ error: pages?.error?.message || 'Could not list eligible Facebook Pages' }, { status: 502 });
+      if (!pagesRes.ok) return fail(pages?.error?.message || 'Could not list eligible Facebook Pages. Please reconnect.', 502);
       accounts = (pages.data || []).flatMap((page: any) => row.type === 'instagram'
         ? page.instagram_business_account ? [{ id: String(page.instagram_business_account.id), name: page.instagram_business_account.username || page.name, token: page.access_token, pageId: String(page.id), pageName: page.name }] : []
         : [{ id: String(page.id), name: page.name, token: page.access_token, pageId: String(page.id), pageName: page.name }]);
